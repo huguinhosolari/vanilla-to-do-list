@@ -1,177 +1,264 @@
 import './style.css'
 
-let tasks = [];
-let taskId = 1;
-let currentFilter = 'all';
-
-
-window.onload = function() {
-    let savedTasks = localStorage.getItem('tasks');
-
-    if (savedTasks) {
-        tasks = JSON.parse(savedTasks);
-        taskId = tasks.length > 0 ? Math.max(...tasks.map(t => t.id)) + 1 : 1;
-    }
-    
-    document.getElementById('addBtn').onclick = addTask;
-    
-    let filterButtons = document.querySelectorAll('.filter-btn');
-    for (let i = 0; i < filterButtons.length; i++) {
-        filterButtons[i].onclick = function() {
-            filterTasks(this.getAttribute('data-filter'));
-        };
-    }
-    
-    document.getElementById('taskInput').onkeypress = function(e) {
-        if (e.key === 'Enter') {
-            addTask();
-        }
-    };
-    
-    renderTasks();
-    updateStats();
+const STORAGE_KEY = 'tasks';
+const FILTERS = {
+    all: 'all',
+    active: 'active',
+    completed: 'completed'
 };
 
-function addTask() {
-    let input = document.getElementById('taskInput');
-    let text = input.value;
-    
-    if (text == '') {
+class TaskRepository {
+    load() {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+            return [];
+        }
+
+        try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+
+    save(tasks) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    }
+}
+
+class TaskService {
+    constructor(repository) {
+        this.repository = repository;
+        this.tasks = [];
+        this.nextTaskId = 1;
+    }
+
+    initialize() {
+        this.tasks = this.repository.load();
+        this.nextTaskId = this.calculateNextTaskId(this.tasks);
+    }
+
+    addTask(rawText) {
+        const text = rawText.trim();
+        if (!text) {
+            return false;
+        }
+
+        const newTask = {
+            id: this.nextTaskId,
+            text,
+            completed: false,
+            createdAt: new Date().toISOString()
+        };
+
+        this.nextTaskId += 1;
+        this.tasks.push(newTask);
+        this.repository.save(this.tasks);
+        return true;
+    }
+
+    toggleTask(taskId) {
+        const task = this.tasks.find((item) => item.id === taskId);
+        if (!task) {
+            return;
+        }
+
+        task.completed = !task.completed;
+        this.repository.save(this.tasks);
+    }
+
+    deleteTask(taskId) {
+        this.tasks = this.tasks.filter((item) => item.id !== taskId);
+        this.repository.save(this.tasks);
+    }
+
+    getFilteredTasks(filter) {
+        if (filter === FILTERS.active) {
+            return this.tasks.filter((task) => !task.completed);
+        }
+
+        if (filter === FILTERS.completed) {
+            return this.tasks.filter((task) => task.completed);
+        }
+
+        return this.tasks;
+    }
+
+    getStats() {
+        const total = this.tasks.length;
+        const completed = this.tasks.filter((task) => task.completed).length;
+        const active = total - completed;
+
+        return { total, completed, active };
+    }
+
+    calculateNextTaskId(tasks) {
+        if (tasks.length === 0) {
+            return 1;
+        }
+
+        return Math.max(...tasks.map((task) => Number(task.id) || 0)) + 1;
+    }
+}
+
+class TaskView {
+    constructor() {
+        this.taskInput = document.getElementById('taskInput');
+        this.addButton = document.getElementById('addBtn');
+        this.taskList = document.getElementById('taskList');
+        this.stats = document.getElementById('stats');
+        this.filterButtons = Array.from(document.querySelectorAll('.filter-btn'));
+    }
+
+    bindAddTask(handler) {
+        this.addButton.onclick = handler;
+        this.taskInput.onkeypress = (event) => {
+            if (event.key === 'Enter') {
+                handler();
+            }
+        };
+    }
+
+    bindFilterChange(handler) {
+        this.filterButtons.forEach((button) => {
+            button.onclick = () => {
+                handler(button.getAttribute('data-filter'));
+            };
+        });
+    }
+
+    getTaskInputValue() {
+        return this.taskInput.value;
+    }
+
+    clearTaskInput() {
+        this.taskInput.value = '';
+    }
+
+    renderTasks(tasks, onToggleTask, onDeleteTask) {
+        this.taskList.innerHTML = '';
+
+        if (tasks.length === 0) {
+            this.renderEmptyState();
+            return;
+        }
+
+        tasks.forEach((task) => {
+            const taskItem = document.createElement('div');
+            taskItem.className = task.completed ? 'task-item completed' : 'task-item';
+
+            const textElement = document.createElement('span');
+            textElement.textContent = task.text;
+
+            const buttonsContainer = document.createElement('div');
+            buttonsContainer.className = 'task-buttons';
+
+            const completeButton = document.createElement('button');
+            completeButton.className = 'complete-btn';
+            completeButton.textContent = task.completed ? 'Reactivar' : 'Completar';
+            completeButton.onclick = () => onToggleTask(task.id);
+
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'delete-btn';
+            deleteButton.textContent = 'Eliminar';
+            deleteButton.onclick = () => onDeleteTask(task.id);
+
+            buttonsContainer.append(completeButton, deleteButton);
+            taskItem.append(textElement, buttonsContainer);
+            this.taskList.appendChild(taskItem);
+        });
+    }
+
+    renderStats(stats) {
+        this.stats.textContent = `Total: ${stats.total} | Completadas: ${stats.completed} | Activas: ${stats.active}`;
+    }
+
+    setActiveFilter(filter) {
+        this.filterButtons.forEach((button) => {
+            const buttonFilter = button.getAttribute('data-filter');
+            button.classList.toggle('active', buttonFilter === filter);
+        });
+    }
+
+    showEmptyTaskAlert() {
         alert('Por favor escribe una tarea');
-        return;
     }
-    
 
-    let newTask = {
-        id: taskId++,
-        text: text,
-        completed: false,
-        createdAt: new Date().toISOString()
-    };
-    
-    tasks.push(newTask);
-    localStorage.setItem('tasks', JSON.stringify(tasks));
-    
-    input.value = '';
-    
-    renderTasks();
-    updateStats();
+    renderEmptyState() {
+        const message = document.createElement('p');
+        message.style.textAlign = 'center';
+        message.style.color = '#999';
+        message.style.padding = '20px';
+        message.textContent = 'No hay tareas para mostrar';
+        this.taskList.appendChild(message);
+    }
 }
 
-
-function renderTasks() {
-    let taskList = document.getElementById('taskList');
-    taskList.innerHTML = ''; 
-
-    let filteredTasks = tasks;
-    if (currentFilter == 'active') {
-        filteredTasks = tasks.filter(function(task) {
-            return !task.completed;
-        });
-    } else if (currentFilter == 'completed') {
-        filteredTasks = tasks.filter(function(task) {
-            return task.completed;
-        });
+class TodoApp {
+    constructor(service, view) {
+        this.service = service;
+        this.view = view;
+        this.currentFilter = FILTERS.all;
     }
-    
 
-    for (let i = 0; i < filteredTasks.length; i++) {
-        let task = filteredTasks[i];
-        let taskDiv = document.createElement('div');
-        taskDiv.className = 'task-item';
-        
-        if (task.completed) {
-            taskDiv.className = 'task-item completed';
+    init() {
+        this.service.initialize();
+        this.bindEvents();
+        this.refreshUI();
+    }
+
+    bindEvents() {
+        this.view.bindAddTask(() => this.handleAddTask());
+        this.view.bindFilterChange((filter) => this.handleFilterChange(filter));
+    }
+
+    handleAddTask() {
+        const wasCreated = this.service.addTask(this.view.getTaskInputValue());
+        if (!wasCreated) {
+            this.view.showEmptyTaskAlert();
+            return;
         }
-        
-        taskDiv.innerHTML = 
-            `<span>${task.text}</span>
-            <div class="task-buttons">
-              <button class="complete-btn" data-id="${task.id}">
-                ${task.completed ? "Reactivar" : "Completar"}
-              </button>
-              <button class="delete-btn" data-id="${task.id}">Eliminar</button>
-            </div>`;
 
-        let completeBtn = taskDiv.querySelector('.complete-btn');
-        let deleteBtn = taskDiv.querySelector('.delete-btn');
-        
-        completeBtn.onclick = function() {
-            toggleTask(parseInt(this.getAttribute('data-id')));
-        };
-        
-        deleteBtn.onclick = function() {
-            deleteTask(parseInt(this.getAttribute('data-id')));
-        };
-        
-        taskList.appendChild(taskDiv);
+        this.view.clearTaskInput();
+        this.refreshUI();
     }
-    
-    if (filteredTasks.length === 0) {
-        taskList.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No hay tareas para mostrar</p>';
-    }
-}
 
-function toggleTask(id) {
-    for (let i = 0; i < tasks.length; i++) {
-        if (tasks[i].id == id) {
-            tasks[i].completed = !tasks[i].completed;
-            break;
+    handleToggleTask(taskId) {
+        this.service.toggleTask(taskId);
+        this.refreshUI();
+    }
+
+    handleDeleteTask(taskId) {
+        this.service.deleteTask(taskId);
+        this.refreshUI();
+    }
+
+    handleFilterChange(filter) {
+        this.currentFilter = filter;
+        this.view.setActiveFilter(this.currentFilter);
+        this.refreshUI(false);
+    }
+
+    refreshUI(updateFilterState = true) {
+        const filteredTasks = this.service.getFilteredTasks(this.currentFilter);
+        this.view.renderTasks(
+            filteredTasks,
+            (taskId) => this.handleToggleTask(taskId),
+            (taskId) => this.handleDeleteTask(taskId)
+        );
+        this.view.renderStats(this.service.getStats());
+
+        if (updateFilterState) {
+            this.view.setActiveFilter(this.currentFilter);
         }
     }
-    
-    localStorage.setItem('tasks', JSON.stringify(tasks));
-    
-    renderTasks();
-    updateStats();
 }
 
-function deleteTask(id) {
-    let newTasks = [];
-    for (let i = 0; i < tasks.length; i++) {
-        if (tasks[i].id != id) {
-            newTasks.push(tasks[i]);
-        }
-    }
-    tasks = newTasks;
-    localStorage.setItem('tasks', JSON.stringify(tasks));
-    
-    renderTasks();
-    updateStats();
-}
-
-function filterTasks(filter) {
-    currentFilter = filter;
-    
-    let buttons = document.querySelectorAll('.filter-btn');
-    for (let i = 0; i < buttons.length; i++) {
-        buttons[i].classList.remove('active');
-    }
-    
-    if (filter == 'all') {
-        buttons[0].classList.add('active');
-    } else if (filter == 'active') {
-        buttons[1].classList.add('active');
-    } else {
-        buttons[2].classList.add('active');
-    }
-    
-    renderTasks();
-}
-
-function updateStats() {
-    let total = tasks.length;
-    let completed = 0;
-    let active = 0;
-    
-    for (let i = 0; i < tasks.length; i++) {
-        if (tasks[i].completed) {
-            completed++;
-        } else {
-            active++;
-        }
-    }
-    
-    let statsDiv = document.getElementById('stats');
-    statsDiv.innerHTML = 'Total: ' + total + ' | Completadas: ' + completed + ' | Activas: ' + active;
-}
+window.onload = () => {
+    const repository = new TaskRepository();
+    const service = new TaskService(repository);
+    const view = new TaskView();
+    const app = new TodoApp(service, view);
+    app.init();
+};
