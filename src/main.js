@@ -138,6 +138,26 @@ function deleteTask(id) {
     
     renderTasks();
     updateStats();
+    highlightRemainingTasks();
+}
+
+function highlightRemainingTasks() {
+    let remainingTasks = document.querySelectorAll('#taskList .task-item');
+
+    for (let i = 0; i < remainingTasks.length; i++) {
+        let taskElement = remainingTasks[i];
+
+        taskElement.classList.remove('remaining-highlight');
+
+        // Restart animation reliably when deleting multiple tasks quickly.
+        void taskElement.offsetWidth;
+
+        taskElement.classList.add('remaining-highlight');
+
+        setTimeout(function() {
+            taskElement.classList.remove('remaining-highlight');
+        }, 700);
+    }
 }
 
 function filterTasks(filter) {

@@ -57,6 +57,25 @@ button:hover {
     border-radius: 5px;
 }
 
+.task-item.remaining-highlight {
+    animation: remainingPulse 0.7s ease;
+}
+
+@keyframes remainingPulse {
+    0% {
+        background-color: #f9f9f9;
+        border-left-color: #4CAF50;
+    }
+    45% {
+        background-color: #fff3bf;
+        border-left-color: #ffb300;
+    }
+    100% {
+        background-color: #f9f9f9;
+        border-left-color: #4CAF50;
+    }
+}
+
 .task-item.completed {
     background-color: #e8e8e8;
     border-left-color: #999;
